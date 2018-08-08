@@ -1,0 +1,11 @@
+{
+	"name": "boringssl",
+    "targetType": "library",
+    "description": "BoringSSL bindings for D.",
+    "copyright": "Copyright (C) 2018, HuntLabs.cn",
+    "authors": [
+        "HuntLabs"
+    ],
+	"libs-posix" : ["ssl", "crypto"],
+    "license": "Apache-2.0"
+}
