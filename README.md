@@ -9,8 +9,8 @@ It's a D binding for BoringSSL.
 $ make build && cd build
 $ cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=1
 $ make
-$ cp crypto/libcrypto.* ssl/libssl.* /usr/local/lib
-$ ldconfig
+$ sudo cp crypto/libcrypto.* ssl/libssl.* /usr/local/lib
+$ sudo ldconfig
 ```
 
 ## Thanks

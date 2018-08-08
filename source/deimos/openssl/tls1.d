@@ -300,17 +300,8 @@ int SSL_export_keying_material(SSL *s, ubyte* out_, size_t olen,
 	const char *label, size_t llen, const(ubyte)* p, size_t plen,
 	int use_context);
 
-version(BoringSSL)
-{
-	int SSL_set_tlsext_host_name(SSL *ssl, const char *name);
 
-}
-else
-{
-	auto SSL_set_tlsext_host_name()(SSL* s,char* name) {
-		return SSL_ctrl(s,SSL_CTRL_SET_TLSEXT_HOSTNAME,TLSEXT_NAMETYPE_host_name,name);
-	}
-}
+int SSL_set_tlsext_host_name(SSL *ssl, const char *name);
 
 
 auto SSL_set_tlsext_debug_callback()(SSL* ssl, ExternC!(void function()) cb) {

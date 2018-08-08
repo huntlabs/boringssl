@@ -1037,17 +1037,17 @@ int ASN1_STRING_to_UTF8(char** out_, ASN1_STRING* in_);
 version(OPENSSL_NO_BIO) {} else {
 void* ASN1_d2i_bio(ExternC!(void* function()) xnew, d2i_of_void* d2i, BIO* in_, void** x);
 
-type* ASN1_d2i_bio_of(type)(ExternC!(type* function()) xnew, D2I_OF!type d2i, BIO* in_, type** x) {
-	return cast(type*)ASN1_d2i_bio(CHECKED_NEW_OF!type(xnew),
-		CHECKED_D2I_OF!type(d2i), in_, CHECKED_PPTR_OF!type(x));
-}
+// type* ASN1_d2i_bio_of(type)(ExternC!(type* function()) xnew, D2I_OF!type d2i, BIO* in_, type** x) {
+// 	return cast(type*)ASN1_d2i_bio(CHECKED_NEW_OF!type(xnew),
+// 		CHECKED_D2I_OF!type(d2i), in_, CHECKED_PPTR_OF!type(x));
+// }
 
 void* ASN1_item_d2i_bio(const(ASN1_ITEM)* it, BIO* in_, void* x);
 int ASN1_i2d_bio(i2d_of_void* i2d,BIO* out_, ubyte* x);
 
-int ASN1_i2d_bio_of(type)(I2D_OF!type* i2d,BIO* out_,type* x) {
-	return ASN1_i2d_bio(CHECKED_I2D_OF!type(i2d), out_, CHECKED_PTR_OF!type(x));
-}
+// int ASN1_i2d_bio_of(type)(I2D_OF!type* i2d,BIO* out_,type* x) {
+// 	return ASN1_i2d_bio(CHECKED_I2D_OF!type(i2d), out_, CHECKED_PTR_OF!type(x));
+// }
 
 int ASN1_i2d_bio_of_const(type)(I2D_OF!(const(type))* i2d,BIO* out_,type* x) {
 	return ASN1_i2d_bio(CHECKED_I2D_OF!type(i2d), out_, CHECKED_PTR_OF!(const(type))(x));
