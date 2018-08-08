@@ -142,6 +142,7 @@
 
 module deimos.openssl.ssl;
 
+
 import deimos.openssl._d_util;
 
 import deimos.openssl.x509_vfy; // Needed for x509_store_st.
@@ -176,6 +177,8 @@ public import deimos.openssl.hmac;
 public import deimos.openssl.kssl;
 public import deimos.openssl.safestack;
 public import deimos.openssl.symhacks;
+
+import std.stdint;
 
 extern (C):
 nothrow:
@@ -670,15 +673,6 @@ auto SSL_CTX_clear_options()(SSL_CTX* ctx, c_long op) {
 auto SSL_CTX_get_options()(SSL_CTX* ctx) {
 	return SSL_CTX_ctrl(ctx,SSL_CTRL_OPTIONS,0,null);
 }
-auto SSL_set_options()(SSL* ssl, c_long op) {
-	return SSL_ctrl(ssl,SSL_CTRL_OPTIONS,op,null);
-}
-auto SSL_clear_options()(SSL* ssl, c_long op) {
-	return SSL_ctrl(ssl,SSL_CTRL_CLEAR_OPTIONS,op,null);
-}
-auto SSL_get_options()(SSL* ssl) {
-	return SSL_ctrl(ssl,SSL_CTRL_OPTIONS,0,null);
-}
 
 auto SSL_CTX_set_mode()(SSL_CTX* ctx, c_long op) {
 	return SSL_CTX_ctrl(ctx,SSL_CTRL_MODE,op,null);
@@ -688,12 +682,6 @@ auto SSL_CTX_clear_mode()(SSL_CTX* ctx, c_long op) {
 }
 auto SSL_CTX_get_mode()(SSL_CTX* ctx) {
 	return SSL_CTX_ctrl(ctx,SSL_CTRL_MODE,0,null);
-}
-auto SSL_clear_mode()(SSL* ssl, c_long op) {
-	return SSL_ctrl(ssl,SSL_CTRL_CLEAR_MODE,op,null);
-}
-auto SSL_set_mode()(SSL* ssl, c_long op) {
-	return SSL_ctrl(ssl,SSL_CTRL_MODE,op,null);
 }
 auto SSL_get_mode()(SSL* ssl) {
 	return SSL_ctrl(ssl,SSL_CTRL_MODE,0,null);
@@ -1919,6 +1907,12 @@ c_long	SSL_ctrl(SSL* ssl,int cmd, c_long larg, void* parg);
 c_long	SSL_callback_ctrl(SSL*, int, ExternC!(void function()) );
 c_long	SSL_CTX_ctrl(SSL_CTX* ctx,int cmd, c_long larg, void* parg);
 c_long	SSL_CTX_callback_ctrl(SSL_CTX*, int, ExternC!(void function()) );
+
+uint32_t SSL_get_options(const SSL *ssl);
+uint32_t SSL_set_options(SSL *ssl, uint32_t options);
+uint32_t SSL_clear_options(SSL *ssl, uint32_t options);
+uint32_t SSL_set_mode(SSL *ssl, uint32_t mode);
+uint32_t SSL_clear_mode(SSL *ssl, uint32_t mode);
 
 int	SSL_get_error(const(SSL)* s,int ret_code);
 const(char)* SSL_get_version(const(SSL)* s);
