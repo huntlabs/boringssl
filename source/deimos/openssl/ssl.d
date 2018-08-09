@@ -1094,7 +1094,7 @@ void SSL_CTX_set_next_proto_select_cb(SSL_CTX *s,
 int SSL_select_next_proto(ubyte** out_, ubyte* outlen,
 			  const(ubyte)* in_, uint inlen,
 			  const(ubyte)* client, uint client_len);
-void SSL_get0_next_proto_negotiated(const SSL *s,
+void SSL_get0_next_proto_negotiated(const(SSL) *s,
 				    const(ubyte)** data, uint *len);
 
 enum OPENSSL_NPN_UNSUPPORTED = 0;
@@ -1939,7 +1939,85 @@ void SSL_CTX_set_verify(SSL_CTX* ctx,int mode,
 			ExternC!(int function(int, X509_STORE_CTX*)) callback);
 
 void SSL_CTX_set_verify_depth(SSL_CTX* ctx,int depth);
+
+
+
 void SSL_CTX_set_cert_verify_callback(SSL_CTX* ctx, ExternC!(int function(X509_STORE_CTX*,void*)) cb, void* arg);
+
+// SSL_enable_signed_cert_timestamps causes |ssl| (which must be the client end
+// of a connection) to request SCTs from the server. See
+// https://tools.ietf.org/html/rfc6962.
+//
+// Call |SSL_get0_signed_cert_timestamp_list| to recover the SCT after the
+// handshake.
+void SSL_enable_signed_cert_timestamps(const(SSL)* ssl);
+
+// SSL_CTX_enable_signed_cert_timestamps enables SCT requests on all client SSL
+// objects created from |ctx|.
+//
+// Call |SSL_get0_signed_cert_timestamp_list| to recover the SCT after the
+// handshake.
+void SSL_CTX_enable_signed_cert_timestamps(const(SSL_CTX)* ctx);
+
+
+// SSL_enable_ocsp_stapling causes |ssl| (which must be the client end of a
+// connection) to request a stapled OCSP response from the server.
+//
+// Call |SSL_get0_ocsp_response| to recover the OCSP response after the
+// handshake.
+void SSL_enable_ocsp_stapling(SSL *ssl);
+
+// SSL_CTX_enable_ocsp_stapling enables OCSP stapling on all client SSL objects
+// created from |ctx|.
+//
+// Call |SSL_get0_ocsp_response| to recover the OCSP response after the
+// handshake.
+void SSL_CTX_enable_ocsp_stapling(SSL_CTX *ctx);
+
+// SSL_CTX_set0_verify_cert_store sets an |X509_STORE| that will be used
+// exclusively for certificate verification and returns one. Ownership of
+// |store| is transferred to the |SSL_CTX|.
+int SSL_CTX_set0_verify_cert_store(SSL_CTX *ctx,
+                                                  X509_STORE *store);
+
+// SSL_CTX_set1_verify_cert_store sets an |X509_STORE| that will be used
+// exclusively for certificate verification and returns one. An additional
+// reference to |store| will be taken.
+int SSL_CTX_set1_verify_cert_store(SSL_CTX *ctx,
+                                                  X509_STORE *store);
+
+// SSL_set0_verify_cert_store sets an |X509_STORE| that will be used
+// exclusively for certificate verification and returns one. Ownership of
+// |store| is transferred to the |SSL|.
+int SSL_set0_verify_cert_store(SSL *ssl, X509_STORE *store);
+
+// SSL_set1_verify_cert_store sets an |X509_STORE| that will be used
+// exclusively for certificate verification and returns one. An additional
+// reference to |store| will be taken.
+int SSL_set1_verify_cert_store(SSL *ssl, X509_STORE *store);
+
+// SSL_CTX_set_ed25519_enabled configures whether |ctx| advertises support for
+// the Ed25519 signature algorithm when using the default preference list. It is
+// disabled by default and may be enabled if the certificate verifier supports
+// Ed25519.
+void SSL_CTX_set_ed25519_enabled(SSL_CTX *ctx, int enabled);
+
+// SSL_CTX_set_rsa_pss_rsae_certs_enabled configures whether |ctx| advertises
+// support for rsa_pss_rsae_* signatures within the certificate chain. It is
+// enabled by default but should be disabled if using a custom certificate
+// verifier which does not support RSA-PSS signatures.
+void SSL_CTX_set_rsa_pss_rsae_certs_enabled(SSL_CTX *ctx,
+                                                           int enabled);
+
+// SSL_CTX_set_verify_algorithm_prefs configures |ctx| to use |prefs| as the
+// preference list when verifying signature's from the peer's long-term key. It
+// returns one on zero on error. |prefs| should not include the internal-only
+// value |SSL_SIGN_RSA_PKCS1_MD5_SHA1|.
+int SSL_CTX_set_verify_algorithm_prefs(SSL_CTX *ctx,
+                                                      const uint16_t *prefs,
+                                                      size_t num_prefs);
+
+
 version(OPENSSL_NO_RSA) {} else {
 int SSL_CTX_use_RSAPrivateKey(SSL_CTX* ctx, RSA* rsa);
 }
@@ -2006,7 +2084,7 @@ c_long	SSL_callback_ctrl(SSL*, int, ExternC!(void function()) );
 c_long	SSL_CTX_ctrl(SSL_CTX* ctx,int cmd, c_long larg, void* parg);
 c_long	SSL_CTX_callback_ctrl(SSL_CTX*, int, ExternC!(void function()) );
 
-uint32_t SSL_get_options(const SSL *ssl);
+uint32_t SSL_get_options(const(SSL) *ssl);
 uint32_t SSL_set_options(SSL *ssl, uint32_t options);
 uint32_t SSL_clear_options(SSL *ssl, uint32_t options);
 uint32_t SSL_set_mode(SSL *ssl, uint32_t mode);
@@ -2116,7 +2194,87 @@ alias SSL_get_session SSL_get0_session; /* just peek at pointer */
 SSL_SESSION* SSL_get_session(const(SSL)* ssl);
 SSL_SESSION* SSL_get1_session(SSL* ssl); /* obtain a reference count */
 SSL_CTX* SSL_get_SSL_CTX(const(SSL)* ssl);
+
+// SSL_set_SSL_CTX changes |ssl|'s |SSL_CTX|. |ssl| will use the
+// certificate-related settings from |ctx|, and |SSL_get_SSL_CTX| will report
+// |ctx|. This function may be used during the callbacks registered by
+// |SSL_CTX_set_select_certificate_cb|,
+// |SSL_CTX_set_tlsext_servername_callback|, and |SSL_CTX_set_cert_cb| or when
+// the handshake is paused from them. It is typically used to switch
+// certificates based on SNI.
+//
+// Note the session cache and related settings will continue to use the initial
+// |SSL_CTX|. Callers should use |SSL_CTX_set_session_id_context| to partition
+// the session cache between different domains.
+//
+// TODO(davidben): Should other settings change after this call?
 SSL_CTX* SSL_set_SSL_CTX(SSL* ssl, SSL_CTX* ctx);
+
+
+
+// Application-layer protocol negotiation.
+//
+// The ALPN extension (RFC 7301) allows negotiating different application-layer
+// protocols over a single port. This is used, for example, to negotiate
+// HTTP/2.
+
+// SSL_CTX_set_alpn_protos sets the client ALPN protocol list on |ctx| to
+// |protos|. |protos| must be in wire-format (i.e. a series of non-empty, 8-bit
+// length-prefixed strings). It returns zero on success and one on failure.
+// Configuring this list enables ALPN on a client.
+//
+// WARNING: this function is dangerous because it breaks the usual return value
+// convention.
+int SSL_CTX_set_alpn_protos(SSL_CTX *ctx, const(uint8_t) *protos,
+                                           uint protos_len);
+
+// SSL_set_alpn_protos sets the client ALPN protocol list on |ssl| to |protos|.
+// |protos| must be in wire-format (i.e. a series of non-empty, 8-bit
+// length-prefixed strings). It returns zero on success and one on failure.
+// Configuring this list enables ALPN on a client.
+//
+// WARNING: this function is dangerous because it breaks the usual return value
+// convention.
+int SSL_set_alpn_protos(SSL *ssl, const(uint8_t) *protos,
+                                       uint protos_len);
+
+// SSL_CTX_set_alpn_select_cb sets a callback function on |ctx| that is called
+// during ClientHello processing in order to select an ALPN protocol from the
+// client's list of offered protocols. Configuring this callback enables ALPN on
+// a server.
+//
+// The callback is passed a wire-format (i.e. a series of non-empty, 8-bit
+// length-prefixed strings) ALPN protocol list in |in|. It should set |*out| and
+// |*out_len| to the selected protocol and return |SSL_TLSEXT_ERR_OK| on
+// success. It does not pass ownership of the buffer. Otherwise, it should
+// return |SSL_TLSEXT_ERR_NOACK|. Other |SSL_TLSEXT_ERR_*| values are
+// unimplemented and will be treated as |SSL_TLSEXT_ERR_NOACK|.
+//
+// The cipher suite is selected before negotiating ALPN. The callback may use
+// |SSL_get_pending_cipher| to query the cipher suite.
+// void SSL_CTX_set_alpn_select_cb(
+//     SSL_CTX *ctx, 
+// 	ExternC!(int function(SSL *ssl, const(uint8_t) ** out, uint8_t *out_len,
+//                             const uint8_t *in, uint in_len, void *arg)) cb,
+//     void *arg);
+
+// SSL_get0_alpn_selected gets the selected ALPN protocol (if any) from |ssl|.
+// On return it sets |*out_data| to point to |*out_len| bytes of protocol name
+// (not including the leading length-prefix byte). If the server didn't respond
+// with a negotiated protocol then |*out_len| will be zero.
+void SSL_get0_alpn_selected(const(SSL) *ssl,
+                                           const uint8_t **out_data,
+                                           uint *out_len);
+
+// SSL_CTX_set_allow_unknown_alpn_protos configures client connections on |ctx|
+// to allow unknown ALPN protocols from the server. Otherwise, by default, the
+// client will require that the protocol be advertised in
+// |SSL_CTX_set_alpn_protos|.
+void SSL_CTX_set_allow_unknown_alpn_protos(SSL_CTX *ctx,
+                                                          int enabled);
+
+
+
 void SSL_set_info_callback(SSL* ssl,
 			   ExternC!(void function(const(SSL)* ssl,int type,int val)) cb);
 ExternC!(void function(const(SSL)* ssl,int type,int val)) SSL_get_info_callback(const(SSL)* ssl);
@@ -2236,6 +2394,108 @@ int SSL_set_session_secret_cb(SSL* s, tls_session_secret_cb_fn tls_session_secre
 
 void SSL_set_debug(SSL *s, int debug_);
 int SSL_cache_hit(SSL *s);
+
+
+enum ssl_renegotiate_mode_t {
+  ssl_renegotiate_never = 0,
+  ssl_renegotiate_once,
+  ssl_renegotiate_freely,
+  ssl_renegotiate_ignore,
+}
+
+// SSL_set_renegotiate_mode configures how |ssl|, a client, reacts to
+// renegotiation attempts by a server. If |ssl| is a server, peer-initiated
+// renegotiations are *always* rejected and this function does nothing.
+//
+// The renegotiation mode defaults to |ssl_renegotiate_never|, but may be set
+// at any point in a connection's lifetime. Set it to |ssl_renegotiate_once| to
+// allow one renegotiation, |ssl_renegotiate_freely| to allow all
+// renegotiations or |ssl_renegotiate_ignore| to ignore HelloRequest messages.
+// Note that ignoring HelloRequest messages may cause the connection to stall
+// if the server waits for the renegotiation to complete.
+//
+// If configuration shedding is enabled (see |SSL_set_shed_handshake_config|),
+// configuration is released if, at any point after the handshake, renegotiation
+// is disabled. It is not possible to switch from disabling renegotiation to
+// enabling it on a given connection. Callers that condition renegotiation on,
+// e.g., ALPN must enable renegotiation before the handshake and conditionally
+// disable it afterwards.
+//
+// There is no support in BoringSSL for initiating renegotiations as a client
+// or server.
+void SSL_set_renegotiate_mode(SSL *ssl, ssl_renegotiate_mode_t mode);
+
+// SSL_renegotiate_pending returns one if |ssl| is in the middle of a
+// renegotiation.
+int SSL_renegotiate_pending(SSL *ssl);
+
+// SSL_total_renegotiations returns the total number of renegotiation handshakes
+// performed by |ssl|. This includes the pending renegotiation, if any.
+int SSL_total_renegotiations(const(SSL) *ssl);
+
+enum tls13_variant_t {
+  tls13_default = 0,
+  tls13_draft23,
+  tls13_draft28,
+}
+
+
+// SSL_get_peer_signature_algorithm returns the signature algorithm used by the
+// peer. If not applicable, it returns zero.
+uint16_t SSL_get_peer_signature_algorithm(const(SSL) *ssl);
+
+// SSL_get_client_random writes up to |max_out| bytes of the most recent
+// handshake's client_random to |out| and returns the number of bytes written.
+// If |max_out| is zero, it returns the size of the client_random.
+size_t SSL_get_client_random(const(SSL) *ssl, uint8_t *ot, size_t max_out);
+
+// SSL_get_server_random writes up to |max_out| bytes of the most recent
+// handshake's server_random to |out| and returns the number of bytes written.
+// If |max_out| is zero, it returns the size of the server_random.
+size_t SSL_get_server_random(const(SSL) *ssl, uint8_t *ot, size_t max_out);
+
+// SSL_get_pending_cipher returns the cipher suite for the current handshake or
+// NULL if one has not been negotiated yet or there is no pending handshake.
+const(SSL_CIPHER) *SSL_get_pending_cipher(const(SSL) *ssl);
+
+// SSL_set_retain_only_sha256_of_client_certs, on a server, sets whether only
+// the SHA-256 hash of peer's certificate should be saved in memory and in the
+// session. This can save memory, ticket size and session cache space. If
+// enabled, |SSL_get_peer_certificate| will return NULL after the handshake
+// completes. See |SSL_SESSION_has_peer_sha256| and
+// |SSL_SESSION_get0_peer_sha256| to query the hash.
+void SSL_set_retain_only_sha256_of_client_certs(SSL *ssl, int enable);
+
+// SSL_CTX_set_retain_only_sha256_of_client_certs, on a server, sets whether
+// only the SHA-256 hash of peer's certificate should be saved in memory and in
+// the session. This can save memory, ticket size and session cache space. If
+// enabled, |SSL_get_peer_certificate| will return NULL after the handshake
+// completes. See |SSL_SESSION_has_peer_sha256| and
+// |SSL_SESSION_get0_peer_sha256| to query the hash.
+void SSL_CTX_set_retain_only_sha256_of_client_certs(SSL_CTX *ctx, int enable);
+
+// SSL_CTX_set_grease_enabled configures whether sockets on |ctx| should enable
+// GREASE. See draft-davidben-tls-grease-01.
+void SSL_CTX_set_grease_enabled(SSL_CTX *ctx, int enabled);
+
+// SSL_max_seal_overhead returns the maximum overhead, in bytes, of sealing a
+// record with |ssl|.
+size_t SSL_max_seal_overhead(const(SSL) *ssl);
+
+// SSL_get_ticket_age_skew returns the difference, in seconds, between the
+// client-sent ticket age and the server-computed value in TLS 1.3 server
+// connections which resumed a session.
+int SSL_get_ticket_age_skew(const(SSL) *ssl);
+
+// SSL_CTX_set_false_start_allowed_without_alpn configures whether connections
+// on |ctx| may use False Start (if |SSL_MODE_ENABLE_FALSE_START| is enabled)
+// without negotiating ALPN.
+void SSL_CTX_set_false_start_allowed_without_alpn(SSL_CTX *ctx, int allowed);
+
+// SSL_is_draft_downgrade returns one if the TLS 1.3 anti-downgrade mechanism
+// would have aborted |ssl|'s handshake and zero otherwise.
+int SSL_is_draft_downgrade(const(SSL) *ssl);
+
 
 /* BEGIN ERROR CODES */
 /* The following lines are auto generated by the script mkerr.pl. Any changes
