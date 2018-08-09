@@ -177,6 +177,7 @@ public import deimos.openssl.hmac;
 public import deimos.openssl.kssl;
 public import deimos.openssl.safestack;
 public import deimos.openssl.symhacks;
+public import deimos.openssl.pool;
 
 import std.stdint;
 
@@ -1465,12 +1466,27 @@ enum SSL_ST_READ_DONE = 0xF2;
 size_t SSL_get_finished(const(SSL)* s, void* buf, size_t count);
 size_t SSL_get_peer_finished(const(SSL)* s, void* buf, size_t count);
 
-/* use either SSL_VERIFY_NONE or SSL_VERIFY_PEER, the last 2 options
- * are 'ored' with SSL_VERIFY_PEER if they are desired */
+// SSL_VERIFY_NONE, on a client, verifies the server certificate but does not
+// make errors fatal. The result may be checked with |SSL_get_verify_result|. On
+// a server it does not request a client certificate. This is the default.
 enum SSL_VERIFY_NONE = 0x00;
+
+// SSL_VERIFY_PEER, on a client, makes server certificate errors fatal. On a
+// server it requests a client certificate and makes errors fatal. However,
+// anonymous clients are still allowed. See
+// |SSL_VERIFY_FAIL_IF_NO_PEER_CERT|.
 enum SSL_VERIFY_PEER = 0x01;
+
+// SSL_VERIFY_FAIL_IF_NO_PEER_CERT configures a server to reject connections if
+// the client declines to send a certificate. This flag must be used together
+// with |SSL_VERIFY_PEER|, otherwise it won't work.
 enum SSL_VERIFY_FAIL_IF_NO_PEER_CERT = 0x02;
-enum SSL_VERIFY_CLIENT_ONCE = 0x04;
+
+// SSL_VERIFY_PEER_IF_NO_OBC configures a server to request a client certificate
+// if and only if Channel ID is not negotiated.
+enum SSL_VERIFY_PEER_IF_NO_OBC = 0x04;
+
+enum SSL_VERIFY_CLIENT_ONCE = 0x00;
 
 alias SSL_library_init OpenSSL_add_ssl_algorithms;
 alias SSL_library_init SSLeay_add_ssl_algorithms;
@@ -1743,7 +1759,19 @@ void	SSL_CTX_flush_sessions(SSL_CTX* ctx,c_long tm);
 const(SSL_CIPHER)* SSL_get_current_cipher(const(SSL)* s);
 int	SSL_CIPHER_get_bits(const(SSL_CIPHER)* c,int* alg_bits);
 char* 	SSL_CIPHER_get_version(const(SSL_CIPHER)* c);
+
+// SSL_CIPHER_standard_name returns the standard IETF name for |cipher|. For
+// example, "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256".
+const(char)* 	SSL_CIPHER_standard_name(const(SSL_CIPHER)* c);
+
+// SSL_CIPHER_get_name returns the OpenSSL name of |cipher|. For example,
+// "ECDHE-RSA-AES128-GCM-SHA256".
 const(char)* 	SSL_CIPHER_get_name(const(SSL_CIPHER)* c);
+
+// SSL_CIPHER_get_kx_name returns a string that describes the key-exchange
+// method used by |cipher|. For example, "ECDHE_ECDSA". TLS 1.3 AEAD-only
+// ciphers return the string "GENERIC".
+const(char)* 	SSL_CIPHER_get_kx_name(const(SSL_CIPHER)* c);
 c_ulong 	SSL_CIPHER_get_id(const SSL_CIPHER *c);
 
 int	SSL_get_fd(const(SSL)* s);
@@ -1768,9 +1796,32 @@ void	SSL_set_read_ahead(SSL* s, int yes);
 int	SSL_get_verify_mode(const(SSL)* s);
 int	SSL_get_verify_depth(const(SSL)* s);
 int	function(int,X509_STORE_CTX*) SSL_get_verify_callback(const(SSL)* s);
+
+// SSL_set_verify configures certificate verification behavior. |mode| is one of
+// the |SSL_VERIFY_*| values defined above. |callback|, if not NULL, is used to
+// customize certificate verification. See the behavior of
+// |X509_STORE_CTX_set_verify_cb|.
+//
+// The callback may use |SSL_get_ex_data_X509_STORE_CTX_idx| with
+// |X509_STORE_CTX_get_ex_data| to look up the |SSL| from |store_ctx|.
 void	SSL_set_verify(SSL* s, int mode,
 		       ExternC!(int function(int ok,X509_STORE_CTX* ctx)) callback);
+
 void	SSL_set_verify_depth(SSL* s, int depth);
+
+enum ssl_verify_result_t {
+  ssl_verify_ok,
+  ssl_verify_invalid,
+  ssl_verify_retry
+}
+
+// SSL_set_custom_verify behaves like |SSL_CTX_set_custom_verify| but configures
+// an individual |SSL|.
+void SSL_set_custom_verify(
+    SSL *ssl, int mode,
+    ExternC!(ssl_verify_result_t function(SSL *ssl, uint8_t *out_alert)) callback);
+
+
 version(OPENSSL_NO_RSA) {} else {
 int	SSL_use_RSAPrivateKey(SSL* ssl, RSA* rsa);
 }
@@ -1835,17 +1886,58 @@ int	SSL_has_matching_session_id(const(SSL)* ssl, const(ubyte)* id,
 SSL_SESSION* d2i_SSL_SESSION(SSL_SESSION** a,const(ubyte)** pp,
 			     c_long length);
 
-//#ifdef HEADER_X509_H
-X509* 	SSL_get_peer_certificate(const(SSL)* s);
-//#endif
 
+// SSL_get_peer_certificate returns the peer's leaf certificate or NULL if the
+// peer did not use certificates. The caller must call |X509_free| on the
+// result to release it.
+X509* 	SSL_get_peer_certificate(const(SSL)* s);
+
+// SSL_get_peer_cert_chain returns the peer's certificate chain or NULL if
+// unavailable or the peer did not use certificates. This is the unverified list
+// of certificates as sent by the peer, not the final chain built during
+// verification. The caller does not take ownership of the result.
+//
+// WARNING: This function behaves differently between client and server. If
+// |ssl| is a server, the returned chain does not include the leaf certificate.
+// If a client, it does.
 STACK_OF!(X509) *SSL_get_peer_cert_chain(const(SSL)* s);
+
+// SSL_get_peer_full_cert_chain returns the peer's certificate chain, or NULL if
+// unavailable or the peer did not use certificates. This is the unverified list
+// of certificates as sent by the peer, not the final chain built during
+// verification. The caller does not take ownership of the result.
+//
+// This is the same as |SSL_get_peer_cert_chain| except that this function
+// always returns the full chain, i.e. the first element of the return value
+// (if any) will be the leaf certificate. In constrast,
+// |SSL_get_peer_cert_chain| returns only the intermediate certificates if the
+// |ssl| is a server.
+STACK_OF!(X509) *SSL_get_peer_full_cert_chain(const(SSL)* s);
+
+// SSL_get0_peer_certificates returns the peer's certificate chain, or NULL if
+// unavailable or the peer did not use certificates. This is the unverified list
+// of certificates as sent by the peer, not the final chain built during
+// verification. The caller does not take ownership of the result.
+//
+// This is the |CRYPTO_BUFFER| variant of |SSL_get_peer_full_cert_chain|.
+STACK_OF!(X509) *SSL_get0_peer_certificates(const(SSL)* s);
+
+// STACK_OF!(X509) *SSL_get_peer_full_cert_chain(const(SSL)* s);
 
 int SSL_CTX_get_verify_mode(const(SSL_CTX)* ctx);
 int SSL_CTX_get_verify_depth(const(SSL_CTX)* ctx);
 ExternC!(int function(int,X509_STORE_CTX*)) SSL_CTX_get_verify_callback(const(SSL_CTX)* ctx);
+
+// SSL_CTX_set_verify configures certificate verification behavior. |mode| is
+// one of the |SSL_VERIFY_*| values defined above. |callback|, if not NULL, is
+// used to customize certificate verification. See the behavior of
+// |X509_STORE_CTX_set_verify_cb|.
+//
+// The callback may use |SSL_get_ex_data_X509_STORE_CTX_idx| with
+// |X509_STORE_CTX_get_ex_data| to look up the |SSL| from |store_ctx|.
 void SSL_CTX_set_verify(SSL_CTX* ctx,int mode,
 			ExternC!(int function(int, X509_STORE_CTX*)) callback);
+
 void SSL_CTX_set_verify_depth(SSL_CTX* ctx,int depth);
 void SSL_CTX_set_cert_verify_callback(SSL_CTX* ctx, ExternC!(int function(X509_STORE_CTX*,void*)) cb, void* arg);
 version(OPENSSL_NO_RSA) {} else {
@@ -1956,6 +2048,22 @@ const(SSL_METHOD)* TLSv1_2_client_method();	/* TLSv1.2 */
 const(SSL_METHOD)* DTLSv1_method();		/* DTLSv1.0 */
 const(SSL_METHOD)* DTLSv1_server_method();	/* DTLSv1.0 */
 const(SSL_METHOD)* DTLSv1_client_method();	/* DTLSv1.0 */
+
+// TLS_method is the |SSL_METHOD| used for TLS connections.
+const(SSL_METHOD)* TLS_method();
+
+// DTLS_method is the |SSL_METHOD| used for DTLS connections.
+const(SSL_METHOD)* DTLS_method();
+
+// TLS_with_buffers_method is like |TLS_method|, but avoids all use of
+// crypto/x509. All client connections created with |TLS_with_buffers_method|
+// will fail unless a certificate verifier is installed with
+// |SSL_set_custom_verify| or |SSL_CTX_set_custom_verify|.
+const(SSL_METHOD)* TLS_with_buffers_method();
+
+// DTLS_with_buffers_method is like |DTLS_method|, but avoids all use of
+// crypto/x509.
+const(SSL_METHOD)* DTLS_with_buffers_method();
 
 STACK_OF!(SSL_CIPHER) *SSL_get_ciphers(const(SSL)* s);
 

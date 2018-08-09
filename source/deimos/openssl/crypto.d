@@ -117,8 +117,12 @@
 module deimos.openssl.crypto;
 
 import deimos.openssl._d_util;
+import deimos.openssl.lhash;
+import deimos.openssl.thread;
 
 import core.stdc.stdlib;
+import core.stdc.stdint;
+
 
 public import deimos.openssl.e_os2;
 
@@ -619,3 +623,19 @@ enum CRYPTO_F_INT_NEW_EX_DATA = 108;
 /* Reason codes. */
 enum CRYPTO_R_FIPS_MODE_NOT_SUPPORTED = 101;
 enum CRYPTO_R_NO_DYNLOCK_CREATE_CALLBACK = 100;
+
+struct crypto_buffer_st {
+  CRYPTO_BUFFER_POOL *pool;
+  uint8_t *data;
+  size_t len;
+  uint32_t references;
+}
+
+alias CRYPTO_BUFFER = crypto_buffer_st;
+
+struct crypto_buffer_pool_st {
+  LHASH_OF!(CRYPTO_BUFFER) *bufs;
+  CRYPTO_MUTEX lock;
+}
+
+alias CRYPTO_BUFFER_POOL = crypto_buffer_pool_st;

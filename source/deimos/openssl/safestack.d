@@ -63,6 +63,9 @@ import deimos.openssl.x509v3;
 
 public import deimos.openssl.stack;
 
+import std.format;
+
+
 void* CHECKED_PTR_OF(type)(type* p) { return cast(void*) (1 ? p : null); }
 
 /* In C++ we get problems because an explicit cast is needed from (void*)
@@ -84,16 +87,47 @@ ExternC!(void function(const(void)*, const(void)*)) CHECKED_SK_CMP_FUNC(type)(Ex
 	return cast(typeof(return))(1 ? p : null);
 }
 
-struct STACK_OF(type = void) { // void is an arbitrary default value for STACK_OF!()
-    _STACK stack;
-}
+// struct STACK_OF(type = void) { // void is an arbitrary default value for STACK_OF!()
+//     _STACK stack;
+// }
 
 // Empty because we use STACK_OF directly as a struct.
 mixin template PREDECLARE_STACK_OF(string type) {}
 mixin template DECLARE_STACK_OF(T = void) {}
 mixin template DECLARE_SPECIAL_STACK_OF(T, U) {}
 
-mixin template IMPLEMENT_STACK_OF(string type) {} /* nada (obsolete in new safestack approach)*/
+// mixin template IMPLEMENT_STACK_OF(string type) {} /* nada (obsolete in new safestack approach)*/
+
+alias stack_cmp_func = extern(C) int function(const void **a, const void **b);
+
+alias STACK_OF(T = void) = _STACK;
+
+string BORINGSSL_DEFINE_STACK_OF_IMPL(string name)() {
+	string formatStr = `
+	alias stack_%1$s_cmp_func = int function(const %1$s* *a, const %1$s* *b);
+
+	STACK_OF!(%1$s) * sk_%1$s_new(stack_%1$s_cmp_func comp) {
+		 return cast(STACK_OF!(%1$s) *)sk_new(cast(stack_cmp_func)comp);
+	}
+
+	STACK_OF!(%1$s) * sk_%1$s_new_null() {
+		 return cast(STACK_OF!(%1$s) *)sk_new_null();
+	}	
+	`;
+
+	return format(formatStr, name);
+}
+
+
+// DEFINE_STACK_OF defines |STACK_OF(type)| to be a stack whose elements are
+// |type| *.
+mixin template DEFINE_STACK_OF(T = void, string name = T.stringof ) {
+	// mixin BORINGSSL_DEFINE_STACK_OF_IMPL!(name, T);
+	enum str = BORINGSSL_DEFINE_STACK_OF_IMPL!(name); 
+	mixin(str);
+	
+	// BORINGSSL_DEFINE_STACK_TRAITS(name, type, false)
+}
 
 
 /* Strings are special: normally an lhash entry will point to a single
@@ -2597,3 +2631,27 @@ alias SKM_ASN1_seq_unpack!X509_REVOKED ASN1_seq_unpack_X509_REVOKED;
 #define lh_SSL_SESSION_free(lh) LHM_lh_free(SSL_SESSION,lh)
 +/
 /* End of util/mkstack.pl block, you may now edit :-) */
+
+import deimos.openssl.crypto;
+
+alias SKM_sk_new!CRYPTO_BUFFER sk_CRYPTO_BUFFER_new;
+alias SKM_sk_new_null!CRYPTO_BUFFER sk_CRYPTO_BUFFER_new_null;
+alias SKM_sk_push!CRYPTO_BUFFER sk_CRYPTO_BUFFER_push;
+alias SKM_sk_find!CRYPTO_BUFFER sk_CRYPTO_BUFFER_find;
+alias SKM_sk_value!CRYPTO_BUFFER sk_CRYPTO_BUFFER_value;
+alias SKM_sk_num!CRYPTO_BUFFER sk_CRYPTO_BUFFER_num;
+// alias SKM_sk_pop_free!CRYPTO_BUFFER sk_CRYPTO_BUFFER_pop_free;
+// alias SKM_sk_insert!CRYPTO_BUFFER sk_CRYPTO_BUFFER_insert;
+// alias SKM_sk_free!CRYPTO_BUFFER sk_CRYPTO_BUFFER_free;
+// alias SKM_sk_set!CRYPTO_BUFFER sk_CRYPTO_BUFFER_set;
+// alias SKM_sk_zero!CRYPTO_BUFFER sk_CRYPTO_BUFFER_zero;
+// alias SKM_sk_unshift!CRYPTO_BUFFER sk_CRYPTO_BUFFER_unshift;
+// alias SKM_sk_find_ex!CRYPTO_BUFFER sk_CRYPTO_BUFFER_find_ex;
+// alias SKM_sk_delete!CRYPTO_BUFFER sk_CRYPTO_BUFFER_delete;
+// alias SKM_sk_delete_ptr!CRYPTO_BUFFER sk_CRYPTO_BUFFER_delete_ptr;
+// alias SKM_sk_set_cmp_func!CRYPTO_BUFFER sk_CRYPTO_BUFFER_set_cmp_func;
+// alias SKM_sk_dup!CRYPTO_BUFFER sk_CRYPTO_BUFFER_dup;
+// alias SKM_sk_shift!CRYPTO_BUFFER sk_CRYPTO_BUFFER_shift;
+// alias SKM_sk_pop!CRYPTO_BUFFER sk_CRYPTO_BUFFER_pop;
+// alias SKM_sk_sort!CRYPTO_BUFFER sk_CRYPTO_BUFFER_sort;
+// alias SKM_sk_is_sorted!CRYPTO_BUFFER sk_CRYPTO_BUFFER_is_sorted;
