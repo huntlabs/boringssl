@@ -73,6 +73,7 @@ public import deimos.openssl.opensslconf;
 public import deimos.openssl.ossl_typ;
 
 public import deimos.openssl.symhacks;
+public import deimos.openssl.bytestring;
 
 version(OPENSSL_NO_BIO) {} else {
 public import deimos.openssl.bio;
@@ -616,6 +617,55 @@ int	EVP_SignFinal(EVP_MD_CTX* ctx,ubyte* md,uint* s,
 int	EVP_VerifyFinal(EVP_MD_CTX* ctx,const(ubyte)* sigbuf,
 		uint siglen,EVP_PKEY* pkey);
 
+
+
+// ASN.1 functions
+
+// EVP_parse_public_key decodes a DER-encoded SubjectPublicKeyInfo structure
+// (RFC 5280) from |cbs| and advances |cbs|. It returns a newly-allocated
+// |EVP_PKEY| or NULL on error.
+//
+// The caller must check the type of the parsed public key to ensure it is
+// suitable and validate other desired key properties such as RSA modulus size
+// or EC curve.
+EVP_PKEY *EVP_parse_public_key(CBS *cbs);
+
+// EVP_marshal_public_key marshals |key| as a DER-encoded SubjectPublicKeyInfo
+// structure (RFC 5280) and appends the result to |cbb|. It returns one on
+// success and zero on error.
+int EVP_marshal_public_key(CBB *cbb, const(EVP_PKEY) *key);
+
+// EVP_parse_private_key decodes a DER-encoded PrivateKeyInfo structure (RFC
+// 5208) from |cbs| and advances |cbs|. It returns a newly-allocated |EVP_PKEY|
+// or NULL on error.
+//
+// The caller must check the type of the parsed private key to ensure it is
+// suitable and validate other desired key properties such as RSA modulus size
+// or EC curve.
+//
+// A PrivateKeyInfo ends with an optional set of attributes. These are not
+// processed and so this function will silently ignore any trailing data in the
+// structure.
+EVP_PKEY *EVP_parse_private_key(CBS *cbs);
+
+// EVP_marshal_private_key marshals |key| as a DER-encoded PrivateKeyInfo
+// structure (RFC 5208) and appends the result to |cbb|. It returns one on
+// success and zero on error.
+int EVP_marshal_private_key(CBB *cbb, const(EVP_PKEY) *key);
+
+
+// Signing
+// EVP_DigestSignInit sets up |ctx| for a signing operation with |type| and
+// |pkey|. The |ctx| argument must have been initialised with
+// |EVP_MD_CTX_init|. If |pctx| is not NULL, the |EVP_PKEY_CTX| of the signing
+// operation will be written to |*pctx|; this can be used to set alternative
+// signing options.
+//
+// For single-shot signing algorithms which do not use a pre-hash, such as
+// Ed25519, |type| should be NULL. The |EVP_MD_CTX| itself is unused but is
+// present so the API is uniform. See |EVP_DigestSign|.
+//
+// It returns one on success, or zero on error.
 int	EVP_DigestSignInit(EVP_MD_CTX* ctx, EVP_PKEY_CTX** pctx,
 			const(EVP_MD)* type, ENGINE* e, EVP_PKEY* pkey);
 int	EVP_DigestSignFinal(EVP_MD_CTX* ctx,

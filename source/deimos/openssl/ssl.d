@@ -2341,26 +2341,25 @@ int SSL_set_alpn_protos(SSL *ssl, const(uint8_t) *protos,
 //
 // The cipher suite is selected before negotiating ALPN. The callback may use
 // |SSL_get_pending_cipher| to query the cipher suite.
-// void SSL_CTX_set_alpn_select_cb(
-//     SSL_CTX *ctx, 
-// 	ExternC!(int function(SSL *ssl, const(uint8_t) ** out, uint8_t *out_len,
-//                             const(uint8_t)* in, uint in_len, void *arg)) cb,
-//     void *arg);
+void SSL_CTX_set_alpn_select_cb(
+    SSL_CTX *ctx, 
+	ExternC!(int function(SSL *ssl, uint8_t ** outBuffer, uint8_t *out_len,
+                            const(uint8_t)* inBuffer, uint in_len, void *arg)) cb,
+    void *arg);
 
 // SSL_get0_alpn_selected gets the selected ALPN protocol (if any) from |ssl|.
 // On return it sets |*out_data| to point to |*out_len| bytes of protocol name
 // (not including the leading length-prefix byte). If the server didn't respond
 // with a negotiated protocol then |*out_len| will be zero.
 void SSL_get0_alpn_selected(const(SSL) *ssl,
-                                           const(uint8_t)* *out_data,
+                                           uint8_t**out_data,
                                            uint *out_len);
 
 // SSL_CTX_set_allow_unknown_alpn_protos configures client connections on |ctx|
 // to allow unknown ALPN protocols from the server. Otherwise, by default, the
 // client will require that the protocol be advertised in
 // |SSL_CTX_set_alpn_protos|.
-void SSL_CTX_set_allow_unknown_alpn_protos(SSL_CTX *ctx,
-                                                          int enabled);
+void SSL_CTX_set_allow_unknown_alpn_protos(SSL_CTX *ctx, int enabled);
 
 
 
