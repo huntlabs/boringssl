@@ -1822,7 +1822,94 @@ void SSL_set_custom_verify(
     ExternC!(ssl_verify_result_t function(SSL *ssl, uint8_t *out_alert)) callback);
 
 
+// Certificate and private key convenience functions.
+
+// Custom private keys.
+enum ssl_private_key_result_t {
+  ssl_private_key_success,
+  ssl_private_key_retry,
+  ssl_private_key_failure
+}
+
+// ssl_private_key_method_st (aka |SSL_PRIVATE_KEY_METHOD|) describes private
+// key hooks. This is used to off-load signing operations to a custom,
+// potentially asynchronous, backend. Metadata about the key such as the type
+// and size are parsed out of the certificate.
+struct ssl_private_key_method_st {
+  // sign signs the message |in| in using the specified signature algorithm. On
+  // success, it returns |ssl_private_key_success| and writes at most |max_out|
+  // bytes of signature data to |out| and sets |*out_len| to the number of bytes
+  // written. On failure, it returns |ssl_private_key_failure|. If the operation
+  // has not completed, it returns |ssl_private_key_retry|. |sign| should
+  // arrange for the high-level operation on |ssl| to be retried when the
+  // operation is completed. This will result in a call to |complete|.
+  //
+  // |signature_algorithm| is one of the |SSL_SIGN_*| values, as defined in TLS
+  // 1.3. Note that, in TLS 1.2, ECDSA algorithms do not require that curve
+  // sizes match hash sizes, so the curve portion of |SSL_SIGN_ECDSA_*| values
+  // must be ignored. BoringSSL will internally handle the curve matching logic
+  // where appropriate.
+  //
+  // It is an error to call |sign| while another private key operation is in
+  // progress on |ssl|.
+  ExternC!(ssl_private_key_result_t function(SSL *ssl, uint8_t *output, size_t *out_len,
+                                        size_t max_out,
+                                        uint16_t signature_algorithm,
+                                        const(uint8_t) *input, size_t in_len)) sign;
+
+  // decrypt decrypts |in_len| bytes of encrypted data from |in|. On success it
+  // returns |ssl_private_key_success|, writes at most |max_out| bytes of
+  // decrypted data to |out| and sets |*out_len| to the actual number of bytes
+  // written. On failure it returns |ssl_private_key_failure|. If the operation
+  // has not completed, it returns |ssl_private_key_retry|. The caller should
+  // arrange for the high-level operation on |ssl| to be retried when the
+  // operation is completed, which will result in a call to |complete|. This
+  // function only works with RSA keys and should perform a raw RSA decryption
+  // operation with no padding.
+  //
+  // It is an error to call |decrypt| while another private key operation is in
+  // progress on |ssl|.
+  ExternC!(ssl_private_key_result_t function(SSL *ssl, uint8_t *output,
+                                           size_t *out_len, size_t max_out,
+                                           const(uint8_t) *input, size_t in_len)) decrypt;
+  
+
+  // complete completes a pending operation. If the operation has completed, it
+  // returns |ssl_private_key_success| and writes the result to |out| as in
+  // |sign|. Otherwise, it returns |ssl_private_key_failure| on failure and
+  // |ssl_private_key_retry| if the operation is still in progress.
+  //
+  // |complete| may be called arbitrarily many times before completion, but it
+  // is an error to call |complete| if there is no pending operation in progress
+  // on |ssl|.
+  ExternC!(ssl_private_key_result_t function(SSL *ssl, uint8_t *ot,
+                                            size_t *out_len, size_t max_out)) complete;
+}
+
+alias SSL_PRIVATE_KEY_METHOD = ssl_private_key_method_st;
+
+// SSL_CTX_set_chain_and_key sets the certificate chain and private key for a
+// TLS client or server. References to the given |CRYPTO_BUFFER| and |EVP_PKEY|
+// objects are added as needed. Exactly one of |privkey| or |privkey_method|
+// may be non-NULL. Returns one on success and zero on error.
+int SSL_CTX_set_chain_and_key(
+    SSL_CTX *ctx, CRYPTO_BUFFER **certs, size_t num_certs,
+    EVP_PKEY *privkey, SSL_PRIVATE_KEY_METHOD *privkey_method);
+
+// SSL_set_chain_and_key sets the certificate chain and private key for a TLS
+// client or server. References to the given |CRYPTO_BUFFER| and |EVP_PKEY|
+// objects are added as needed. Exactly one of |privkey| or |privkey_method|
+// may be non-NULL. Returns one on success and zero on error.
+int SSL_set_chain_and_key(
+    SSL *ssl, CRYPTO_BUFFER **certs, size_t num_certs, EVP_PKEY *privkey,
+    SSL_PRIVATE_KEY_METHOD *privkey_method);
+
+
+
 version(OPENSSL_NO_RSA) {} else {
+
+// SSL_use_RSAPrivateKey sets |ctx|'s private key to |rsa|. It returns one on
+// success and zero on failure.
 int	SSL_use_RSAPrivateKey(SSL* ssl, RSA* rsa);
 }
 int	SSL_use_RSAPrivateKey_ASN1(SSL* ssl, ubyte* d, c_long len);
@@ -2019,6 +2106,8 @@ int SSL_CTX_set_verify_algorithm_prefs(SSL_CTX *ctx,
 
 
 version(OPENSSL_NO_RSA) {} else {
+// SSL_CTX_use_RSAPrivateKey sets |ctx|'s private key to |rsa|. It returns one
+// on success and zero on failure.
 int SSL_CTX_use_RSAPrivateKey(SSL_CTX* ctx, RSA* rsa);
 }
 int SSL_CTX_use_RSAPrivateKey_ASN1(SSL_CTX* ctx, const(ubyte)* d, c_long len);
@@ -2255,7 +2344,7 @@ int SSL_set_alpn_protos(SSL *ssl, const(uint8_t) *protos,
 // void SSL_CTX_set_alpn_select_cb(
 //     SSL_CTX *ctx, 
 // 	ExternC!(int function(SSL *ssl, const(uint8_t) ** out, uint8_t *out_len,
-//                             const uint8_t *in, uint in_len, void *arg)) cb,
+//                             const(uint8_t)* in, uint in_len, void *arg)) cb,
 //     void *arg);
 
 // SSL_get0_alpn_selected gets the selected ALPN protocol (if any) from |ssl|.
@@ -2263,7 +2352,7 @@ int SSL_set_alpn_protos(SSL *ssl, const(uint8_t) *protos,
 // (not including the leading length-prefix byte). If the server didn't respond
 // with a negotiated protocol then |*out_len| will be zero.
 void SSL_get0_alpn_selected(const(SSL) *ssl,
-                                           const uint8_t **out_data,
+                                           const(uint8_t)* *out_data,
                                            uint *out_len);
 
 // SSL_CTX_set_allow_unknown_alpn_protos configures client connections on |ctx|
