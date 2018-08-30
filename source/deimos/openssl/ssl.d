@@ -651,6 +651,40 @@ enum SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER = 0x00000002;
 enum SSL_MODE_AUTO_RETRY = 0x00000004;
 /* Don't attempt to automatically build certificate chain */
 enum SSL_MODE_NO_AUTO_CHAIN = 0x00000008;
+
+
+// SSL_MODE_ENABLE_FALSE_START allows clients to send application data before
+// receipt of ChangeCipherSpec and Finished. This mode enables full handshakes
+// to 'complete' in one RTT. See RFC 7918.
+//
+// When False Start is enabled, |SSL_do_handshake| may succeed before the
+// handshake has completely finished. |SSL_write| will function at this point,
+// and |SSL_read| will transparently wait for the final handshake leg before
+// returning application data. To determine if False Start occurred or when the
+// handshake is completely finished, see |SSL_in_false_start|, |SSL_in_init|,
+// and |SSL_CB_HANDSHAKE_DONE| from |SSL_CTX_set_info_callback|.
+enum SSL_MODE_ENABLE_FALSE_START = 0x00000080L;
+
+// SSL_MODE_CBC_RECORD_SPLITTING causes multi-byte CBC records in TLS 1.0 to be
+// split in two: the first record will contain a single byte and the second will
+// contain the remainder. This effectively randomises the IV and prevents BEAST
+// attacks.
+enum SSL_MODE_CBC_RECORD_SPLITTING = 0x00000100L;
+
+// SSL_MODE_NO_SESSION_CREATION will cause any attempts to create a session to
+// fail with SSL_R_SESSION_MAY_NOT_BE_CREATED. This can be used to enforce that
+// session resumption is used for a given SSL*.
+enum SSL_MODE_NO_SESSION_CREATION = 0x00000200L;
+
+// SSL_MODE_SEND_FALLBACK_SCSV sends TLS_FALLBACK_SCSV in the ClientHello.
+// To be set only by applications that reconnect with a downgraded protocol
+// version; see RFC 7507 for details.
+//
+// DO NOT ENABLE THIS if your application attempts a normal handshake. Only use
+// this in explicit fallback retries, following the guidance in RFC 7507.
+enum SSL_MODE_SEND_FALLBACK_SCSV = 0x00000400L;
+
+
 /* Save RAM by releasing read and write buffers when they're empty. (SSL3 and
  * TLS only.)  "Released" buffers are put onto a free-list in the context
  * or just freed (depending on the context's setting for freelist_max_len). */
@@ -3113,3 +3147,5 @@ enum SSL_R_WRONG_SSL_VERSION = 266;
 enum SSL_R_WRONG_VERSION_NUMBER = 267;
 enum SSL_R_X509_LIB = 268;
 enum SSL_R_X509_VERIFICATION_SETUP_PROBLEMS = 269;
+
+
